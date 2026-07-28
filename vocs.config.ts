@@ -11,9 +11,22 @@ const baseUrl = (() => {
 })();
 
 export default defineConfig({
-  accentColor: "light-dark(#000000, #ffffff)",
-  colorScheme: "light dark",
+  accentColor: "#ffffff",
+  colorScheme: "dark",
   baseUrl,
+  head: (path) =>
+    path === "/"
+      ? {
+          link: [
+            {
+              as: "image",
+              fetchpriority: "high",
+              href: "/marketing/mpp-hero-poster.jpg",
+              rel: "preload",
+            },
+          ],
+        }
+      : undefined,
   markdown: {
     outputRemarkPlugins: [remarkMppMarkdown],
   },
@@ -250,8 +263,8 @@ export default defineConfig({
     },
   },
   logoUrl: {
-    light: "/logo-dark.svg",
-    dark: "/logo-light.svg",
+    light: "/marketing/mpp-logo.svg",
+    dark: "/marketing/mpp-logo.svg",
   },
   mcp: {
     enabled: true,

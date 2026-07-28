@@ -9,87 +9,41 @@ type BlogPost = {
   to: string;
 };
 
-function ArrowIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      style={{
-        alignSelf: "center",
-        color: "var(--vocs-text-color-muted)",
-        flexShrink: 0,
-      }}
-    >
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
-  );
+function formatDate(date: string) {
+  return date.replace(/^[A-Za-z]+,\s*/, "");
 }
 
 function BlogPostRow({ date, description, title, to }: BlogPost) {
   return (
-    <Link
-      to={to}
-      className="blog-post-row info-card-link no-underline!"
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "space-between",
-        gap: "0.55rem",
-        padding: "0.65rem 0.85rem",
-        borderRadius: 8,
-        border: "1px solid var(--vocs-border-color-primary)",
-        background: "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.03))",
-        color: "var(--vocs-text-color-heading)",
-        textDecoration: "none",
-        cursor: "pointer",
-        transition: "background 0.15s, border-color 0.15s",
-      }}
-    >
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--vocs-text-color-muted)",
-            marginBottom: "0.1rem",
-          }}
-        >
-          {date}
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 500,
-            marginBottom: "0.1rem",
-          }}
-        >
-          {title}
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--vocs-text-color-muted)",
-            lineHeight: 1.6,
-          }}
-        >
-          {description}
-        </div>
+    <Link className="blog-post-row" to={to}>
+      <div className="blog-post-row-title">
+        <h2>{title}</h2>
+        <p>{formatDate(date)}</p>
       </div>
-      <ArrowIcon />
+      <div className="blog-post-row-description">{description}</div>
+      <span aria-hidden="true" className="blog-post-row-arrow">
+        <svg
+          aria-hidden="true"
+          fill="none"
+          height="16"
+          stroke="currentColor"
+          strokeLinecap="square"
+          strokeLinejoin="miter"
+          strokeWidth="1.25"
+          viewBox="0 0 16 16"
+          width="16"
+        >
+          <line x1="4.5" x2="11.5" y1="11.5" y2="4.5" />
+          <polyline points="5.5 4.5 11.5 4.5 11.5 10.5" />
+        </svg>
+      </span>
     </Link>
   );
 }
 
 export function BlogPostList({ posts }: { posts: BlogPost[] }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="blog-post-list">
       {posts.map((post) => (
         <BlogPostRow key={post.to} {...post} />
       ))}
