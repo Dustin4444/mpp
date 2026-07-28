@@ -1,5 +1,6 @@
 import ruby from "shiki/langs/ruby.mjs";
 import { defineConfig, McpSource } from "vocs/config";
+import { loadBlogPosts } from "./scripts/blog";
 import remarkMppMarkdown from "./scripts/remark-mpp-markdown.mjs";
 import { shikiStyleToClass } from "./src/shiki-style-to-class.js";
 
@@ -28,7 +29,15 @@ export default defineConfig({
         }
       : undefined,
   markdown: {
-    outputRemarkPlugins: [remarkMppMarkdown],
+    outputRemarkPlugins: [
+      // Production bundles may omit source MDX after Markdown artifacts exist.
+      // Builds still fail on missing or invalid posts; only runtime config load
+      // can safely use an empty catalog.
+      [
+        remarkMppMarkdown,
+        { blogPosts: loadBlogPosts({ missingDirectory: "empty" }) },
+      ],
+    ],
   },
   redirects: [
     { source: "/index", destination: "/" },

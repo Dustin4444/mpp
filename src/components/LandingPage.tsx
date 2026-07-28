@@ -1,5 +1,6 @@
 "use client";
 
+import blogPosts from "virtual:blog-posts";
 import {
   type ComponentType,
   lazy,
@@ -8,12 +9,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { BLOG_POSTS, formatBlogPostDate } from "../data/blog";
 import {
   type FeaturedService,
   fetchFeaturedServices,
   serviceIconUrl,
 } from "../data/registry";
+import { formatBlogPostDate } from "../lib/blog";
 import { AnalyticsEvents, captureEvent } from "../lib/posthog";
 import { Terminal } from "./Terminal";
 
@@ -288,7 +289,7 @@ export function LandingPage() {
           </h2>
         </div>
         <div className="marketing-blog-list">
-          {BLOG_POSTS.slice(0, 5).map((post) => (
+          {blogPosts.slice(0, 5).map((post) => (
             <Link className="marketing-blog-row" key={post.to} to={post.to}>
               <div className="marketing-blog-row-title">
                 <h3>{post.title}</h3>
