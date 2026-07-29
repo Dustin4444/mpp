@@ -70,6 +70,73 @@ const INTEGRATIONS = [
   },
 ];
 
+const PAYMENT_METHOD_SNIPPETS = [
+  {
+    code: `const mppx = Mppx.create({ methods: [tempo.charge()] })
+
+app.get(
+  '/premium',
+  mppx.charge({ amount: '1' }),
+  (c) => c.text('Paid'),
+)`,
+    imports: `import { Mppx, tempo } from 'mppx/hono'`,
+    method: "Tempo",
+  },
+  {
+    code: `const payments = await stripe.create({ client: stripeClient })
+
+const mppx = Mppx.create({
+  methods: [payments.spt.charge()],
+})
+
+app.get(
+  '/premium',
+  mppx.charge({ amount: '1' }),
+  (c) => c.text('Paid'),
+)`,
+    imports: `import { Mppx, stripe } from 'mppx/hono'`,
+    method: "Stripe",
+  },
+  {
+    code: `const mppx = Mppx.create({
+  methods: [spark.charge({ mnemonic: process.env.MNEMONIC! })],
+})
+
+app.get(
+  '/premium',
+  mppx.charge({ amount: '1' }),
+  (c) => c.text('Paid'),
+)`,
+    imports: `import { Mppx } from 'mppx/hono'
+import { spark } from '@buildonspark/lightning-mpp-sdk/server'`,
+    method: "Bitcoin",
+  },
+];
+
+function createTypescriptHighlighter() {
+  return Promise.all([
+    import("shiki/core"),
+    import("shiki/engine/javascript"),
+    import("shiki/dist/langs/typescript.mjs"),
+    import("shiki/dist/themes/github-dark-default.mjs"),
+  ]).then(async ([core, engine, language, theme]) =>
+    core.createHighlighterCore({
+      engine: engine.createJavaScriptRegexEngine(),
+      langs: [language.default],
+      themes: [theme.default],
+    }),
+  );
+}
+
+let typescriptHighlighter:
+  | ReturnType<typeof createTypescriptHighlighter>
+  | undefined;
+
+function loadTypescriptHighlighter() {
+  typescriptHighlighter ??= createTypescriptHighlighter();
+  return typescriptHighlighter;
+}
+
 const TERMINAL_STEPS = [
   Terminal.commands(["./mpp.sh"]),
   Terminal.wizard([
@@ -241,6 +308,8 @@ export function LandingPage() {
         </div>
       </section>
 
+      <IntegrationCodeCarousel />
+
       <section className="marketing-services">
         <div className="marketing-section-heading">
           <div>
@@ -345,6 +414,117 @@ Object.assign(LandingPage, {
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return <p className="marketing-section-label">{children}</p>;
+}
+
+function IntegrationCodeCarousel() {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [highlightedCode, setHighlightedCode] = useState("");
+  const [shouldHighlight, setShouldHighlight] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
+  const prefersReducedMotion = useMediaQuery(
+    "(prefers-reduced-motion: reduce)",
+  );
+
+  useEffect(() => {
+    if (shouldHighlight) return;
+    const section = sectionRef.current;
+    if (!section) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setShouldHighlight(true);
+        observer.disconnect();
+      },
+      { rootMargin: "300px" },
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [shouldHighlight]);
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+
+    const interval = window.setInterval(() => {
+      setActiveIndex((index) => (index + 1) % PAYMENT_METHOD_SNIPPETS.length);
+    }, 4200);
+    return () => window.clearInterval(interval);
+  }, [prefersReducedMotion]);
+
+  const activeSnippet = PAYMENT_METHOD_SNIPPETS[activeIndex];
+  const source = `${activeSnippet.imports}
+
+${activeSnippet.code}`;
+
+  useEffect(() => {
+    if (!shouldHighlight) return;
+
+    let cancelled = false;
+    setHighlightedCode("");
+
+    loadTypescriptHighlighter()
+      .then((highlighter) =>
+        highlighter.codeToHtml(source, {
+          lang: "ts",
+          theme: "github-dark-default",
+        }),
+      )
+      .then((html) => {
+        if (!cancelled) setHighlightedCode(html);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldHighlight, source]);
+
+  return (
+    <section className="marketing-single-line" ref={sectionRef}>
+      <div className="marketing-single-line-intro">
+        <SectionLabel>Integrate</SectionLabel>
+        <h2>Sell to agents with just a single line of code</h2>
+        <p className="marketing-single-line-copy">
+          Accept fiat and stablecoin payments in any currency, including
+          transactions under $0.01.
+        </p>
+      </div>
+      <div className="marketing-code-carousel">
+        <div className="marketing-code-carousel-header">
+          <span>{activeSnippet.method}</span>
+        </div>
+        <div className="marketing-code-carousel-content">
+          <div className="marketing-code-snippet" key={activeSnippet.method}>
+            {highlightedCode ? (
+              <div
+                className="marketing-code-shiki"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: renders static MPPX snippets highlighted by Shiki
+                dangerouslySetInnerHTML={{ __html: highlightedCode }}
+              />
+            ) : (
+              <pre className="marketing-code-fallback">
+                <code>{source}</code>
+              </pre>
+            )}
+          </div>
+        </div>
+        <fieldset
+          aria-label="Choose a payment method example"
+          className="marketing-code-carousel-dots"
+        >
+          {PAYMENT_METHOD_SNIPPETS.map((snippet, index) => (
+            <button
+              aria-label={`Show ${snippet.method} example`}
+              aria-pressed={index === activeIndex}
+              className={index === activeIndex ? "is-active" : undefined}
+              key={snippet.method}
+              onClick={() => setActiveIndex(index)}
+              type="button"
+            />
+          ))}
+        </fieldset>
+      </div>
+    </section>
+  );
 }
 
 function DesignedBy() {
@@ -464,6 +644,7 @@ function LandingStyles() {
       .marketing-designed-by { position: relative; z-index: 1; }
       .marketing-hero-content { display: flex; flex-direction: column; gap: 2.25rem; max-width: 62rem; }
       .marketing-hero :is(h1, h2),
+      .marketing-single-line h2,
       .marketing-services h2,
       .marketing-blog h2 {
         color: var(--marketing-copy) !important;
@@ -543,6 +724,26 @@ function LandingStyles() {
       .marketing-integration-logo { align-items: center; border: 1px solid var(--marketing-border); display: flex; height: 4.5rem; justify-content: center; padding: 1rem; text-decoration: none !important; transition: background-color 150ms ease, border-color 150ms ease; }
       .marketing-integration-logo:is(:hover, :focus-visible) { background: var(--marketing-elevated); border-color: var(--marketing-border-hover); outline: none; }
       .marketing-integration-logo img { max-height: 1.75rem; max-width: 100%; opacity: 0.9; width: auto; }
+      .marketing-single-line { border-top: 1px solid var(--marketing-border); display: grid; gap: 2.5rem; margin-inline: auto; max-width: 1728px; padding: clamp(4rem, 8vw, 7rem) clamp(1rem, 4vw, 3rem); }
+      .marketing-single-line h2 { margin: 0 !important; }
+      .marketing-single-line-intro { padding: clamp(1rem, 3vw, 2rem); }
+      .marketing-single-line-copy { color: var(--marketing-muted); font-size: 1.125rem; line-height: 1.4; margin: 1.5rem 0 0; max-width: 28rem; }
+      .marketing-code-carousel { background: #101010; border: 1px solid var(--marketing-border); display: flex; flex-direction: column; height: 28rem; min-width: 0; }
+      .marketing-code-carousel-header { align-items: center; border-bottom: 1px solid var(--marketing-border); color: var(--marketing-copy); display: flex; flex: none; font-family: var(--font-mono, monospace); font-size: 0.75rem; justify-content: flex-start; line-height: 1rem; padding: 0.875rem 1rem; text-transform: uppercase; }
+      .marketing-code-carousel-content { background: #101010; display: flex; flex: 1; min-height: 0; overflow: auto; padding: clamp(1rem, 3vw, 2rem); }
+      .marketing-code-snippet { animation: marketing-code-fade 520ms ease both; background: #101010; flex: 1; min-height: 0; min-width: 0; }
+      .marketing-code-shiki { background: #101010; height: 100%; }
+      .marketing-code-fallback,
+      .marketing-code-shiki .shiki { background: #101010 !important; color: #dedede !important; font-family: var(--font-mono, monospace) !important; font-size: clamp(0.75rem, 1.4vw, 0.9375rem) !important; height: 100%; line-height: 1.5 !important; margin: 0 !important; overflow-x: auto; padding: 0 0 0.25rem !important; white-space: pre; }
+      .marketing-code-fallback code,
+      .marketing-code-shiki .shiki code { font-family: inherit !important; }
+      .marketing-code-carousel-dots { align-items: center; border: 0; border-top: 1px solid var(--marketing-border); display: flex; gap: 0.375rem; margin: 0; min-width: 0; padding: 0.625rem 1rem; }
+      .marketing-code-carousel-dots button { appearance: none; background: transparent; border: 0; cursor: pointer; height: 1.5rem; padding: 0; position: relative; transition: width 300ms ease; width: 1.25rem; }
+      .marketing-code-carousel-dots button::after { background: var(--marketing-border); content: ""; height: 2px; inset: calc(50% - 1px) 0 auto; position: absolute; transition: background-color 300ms ease; }
+      .marketing-code-carousel-dots button.is-active { width: 3rem; }
+      .marketing-code-carousel-dots button.is-active::after { background: var(--marketing-copy); }
+      .marketing-code-carousel-dots button:focus-visible { outline: 1px solid var(--marketing-copy); outline-offset: 2px; }
+      @keyframes marketing-code-fade { from { opacity: 0; transform: translateY(0.5rem); } to { opacity: 1; transform: translateY(0); } }
       .marketing-services,
       .marketing-blog { border-top: 1px solid var(--marketing-border); padding-bottom: clamp(5rem, 10vw, 9rem); padding-top: clamp(1.5rem, 3vw, 2rem); }
       .marketing-section-heading { align-items: flex-end; display: flex; gap: 2rem; justify-content: space-between; }
@@ -588,6 +789,7 @@ function LandingStyles() {
         .marketing-hero,
         .marketing-terminal-section,
         .marketing-integrations,
+        .marketing-single-line,
         .marketing-services,
         .marketing-blog { padding-inline: 3rem; }
         .marketing-hero { min-height: 100svh; padding-bottom: 2.5rem; padding-top: 11.875rem; }
@@ -617,6 +819,8 @@ function LandingStyles() {
         .marketing-mobile-terminal-art { display: none; }
         .marketing-terminal-shell { height: 17.25rem; min-height: 0; }
         .marketing-integration-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+        .marketing-single-line { align-items: start; gap: clamp(4rem, 10vw, 12rem); grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }
+        .marketing-code-carousel { max-width: 40rem; }
       }
       @media (min-width: 1280px) {
         .marketing-blog { gap: 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -638,6 +842,7 @@ function LandingStyles() {
         .marketing-hero,
         .marketing-terminal-section,
         .marketing-integrations,
+        .marketing-single-line,
         .marketing-services,
         .marketing-blog { padding-inline: 3rem; }
         .marketing-blog::before { inset-inline: 3rem; }
@@ -646,6 +851,7 @@ function LandingStyles() {
         .marketing-hero,
         .marketing-terminal-section,
         .marketing-integrations,
+        .marketing-single-line,
         .marketing-services,
         .marketing-blog { padding-inline: 1rem; }
         .marketing-designed-by { display: none; }
@@ -670,6 +876,11 @@ function LandingStyles() {
         .marketing-actions { flex-direction: column; gap: 0.5rem; }
         .marketing-actions .marketing-button { width: 100%; }
         .marketing-designed-by { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .marketing-code-snippet { animation: none; }
+        .marketing-code-carousel-dots button,
+        .marketing-code-carousel-dots button::after { transition: none; }
       }
     `}</style>
   );
