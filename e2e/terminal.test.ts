@@ -144,6 +144,92 @@ describe("terminal", () => {
     await page.close();
   });
 
+  it("enlarges the marketing terminal into a closable viewport modal", async () => {
+    const page = await newPage();
+    await page.goto(pageUrl());
+
+    const terminal = page.getByRole("application", {
+      name: "MPP interactive terminal demo",
+    });
+    await playwrightExpect(terminal).toBeVisible({ timeout: 10_000 });
+    await page.waitForSelector("[data-wizard-ready]", { timeout: 10_000 });
+    await page.getByRole("button", { name: /Chat with OpenAI/ }).click();
+    const prompt = page.getByRole("textbox");
+    await playwrightExpect(prompt).toBeVisible({ timeout: 5_000 });
+    await prompt.fill("preserve this prompt");
+
+    await page
+      .getByRole("button", { name: "Enlarge terminal", exact: true })
+      .click();
+
+    const modal = page.getByRole("dialog", { name: "MPP terminal" });
+    await playwrightExpect(modal).toBeVisible();
+    await playwrightExpect(prompt).toHaveValue("preserve this prompt");
+    await playwrightExpect(
+      page.getByRole("button", { name: "Close terminal", exact: true }),
+    ).toHaveCount(2);
+    const closeButton = modal.getByRole("button", {
+      name: "Close terminal",
+      exact: true,
+    });
+    await playwrightExpect(closeButton).toBeFocused();
+    await playwrightExpect(
+      page.locator(".terminal-fullscreen"),
+    ).toHaveAttribute("tabindex", "-1");
+    expect(
+      await page.evaluate(() => {
+        const portal = document.querySelector("[data-terminal-portal]");
+        return Array.from(document.body.children)
+          .filter((element) => element !== portal)
+          .every((element) => (element as HTMLElement).inert);
+      }),
+    ).toBe(true);
+
+    const modalBox = await modal.boundingBox();
+    expect(modalBox).not.toBeNull();
+    expect(modalBox?.x).toBeGreaterThanOrEqual(16);
+    expect(modalBox?.y).toBeGreaterThanOrEqual(16);
+    expect(modalBox?.width).toBeLessThanOrEqual(1080);
+    expect(modalBox?.height).toBeLessThanOrEqual(640);
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe(
+      "hidden",
+    );
+
+    await modal.evaluate((element) => {
+      const focusable = Array.from(
+        element.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((candidate) => candidate.getClientRects().length > 0);
+      focusable.at(-1)?.focus();
+    });
+    await page.keyboard.press("Tab");
+    expect(
+      await modal.evaluate((element) =>
+        element.contains(document.activeElement),
+      ),
+    ).toBe(true);
+
+    await closeButton.click();
+    const enlargeButton = page.getByRole("button", {
+      name: "Enlarge terminal",
+      exact: true,
+    });
+    await playwrightExpect(enlargeButton).toBeVisible();
+    await playwrightExpect(enlargeButton).toBeFocused();
+    await playwrightExpect(prompt).toHaveValue("preserve this prompt");
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+    expect(
+      await page.evaluate(() =>
+        Array.from(document.body.children).every(
+          (element) => !(element as HTMLElement).inert,
+        ),
+      ),
+    ).toBe(true);
+
+    await page.close();
+  });
+
   it("types out demo command and reaches wizard", async () => {
     const page = await newPage();
     await page.goto(pageUrl());
