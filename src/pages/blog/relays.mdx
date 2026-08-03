@@ -1,0 +1,74 @@
+---
+layout: minimal
+title: "Simplify MPP integrations with relays"
+outline: false
+showAskAi: false
+showFeedback: false
+showSearch: false
+description: "Delegate MPP payment validation and settlement without changing your application's payment flow."
+imageDescription: "Delegate MPP payment validation and settlement"
+publishedAt: "2026-08-03"
+---
+
+# Simplify MPP integrations with relays [Delegate payment validation and settlement to an external service]
+
+`mppx` now supports relays. A relay is a networked interface that abstracts payment-method settlement away from your application, reducing integration complexity and giving you new capabilities.
+
+## What a relay does
+
+A relay sits between your application and the payment settlement layer. It handles two lifecycle operations:
+
+- Validation checks whether a payment Credential is valid and can be accepted by the underlying payment rail.
+- `broadcast` revalidates the payment Credential, finalizes or accepts payment, and returns the information needed to create a Receipt.
+
+Relays give applications one interface for payment finalization while relay operators handle the details of each payment method.
+
+## Add a relay
+
+### Tempo charges
+
+Pass a Tempo API key to `tempo.charge`. Your `mppx` integration automatically uses the Tempo relay.
+
+```ts twoslash [server.ts]
+import { Mppx, tempo } from 'mppx/server'
+
+const mppx = Mppx.create({
+  methods: [
+    // [!code hl:start]
+    tempo.charge({
+      relay: {
+        apiKey: process.env.TEMPO_API_KEY!,
+      },
+    }),
+    // [!code hl:end]
+  ],
+})
+```
+
+You can point the same integration at a Tempo API-compatible service with `relay.apiBaseUrl`.
+
+### Other payment methods
+
+For any other payment method, connect your relay to the `validate` and `broadcast` hooks with `Method.toServer`:
+
+```ts [method.server.ts]
+import { Method } from 'mppx'
+import { charge } from './method'
+
+export const chargeServer = Method.toServer(charge, {
+  async broadcast({ credential, request }) { // [!code hl]
+    return relay.broadcast({ credential, request })
+  },
+  async validate({ credential, request }) { // [!code hl]
+    return relay.validate({ credential, request })
+  },
+})
+```
+
+## Author a relay
+
+MPP does not require relays or require them to conform to a single interface. Relay authors can define their own API shape, payment method support, and underlying functionality—as long as they preserve the core MPP control flow.
+
+## Learn more
+
+- [Relay integration guide](/advanced/relays)
