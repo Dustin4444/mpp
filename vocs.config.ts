@@ -177,6 +177,10 @@ export default defineConfig({
       destination: "/sdk/typescript/core/Challenge.fromResponse",
     },
     {
+      source: "/sdk/typescript/Challenge.fromResponseList",
+      destination: "/sdk/typescript/core/Challenge.fromResponseList",
+    },
+    {
       source: "/sdk/typescript/Challenge.serialize",
       destination: "/sdk/typescript/core/Challenge.serialize",
     },
@@ -769,7 +773,7 @@ export default defineConfig({
                     collapsed: true,
                     items: [
                       {
-                        text: "Ws.serve",
+                        text: "session.serveWebSocket",
                         link: "/sdk/typescript/server/Ws.serve",
                       },
                     ],
@@ -859,6 +863,10 @@ export default defineConfig({
                       {
                         text: ".fromResponse",
                         link: "/sdk/typescript/core/Challenge.fromResponse",
+                      },
+                      {
+                        text: ".fromResponseList",
+                        link: "/sdk/typescript/core/Challenge.fromResponseList",
                       },
                       {
                         text: ".meta",
