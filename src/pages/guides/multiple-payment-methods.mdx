@@ -43,7 +43,7 @@ WWW-Authenticate: Payment method="stripe", intent="charge", ...
 WWW-Authenticate: Payment method="lightning", intent="charge", ...
 ```
 
-The server verifies whichever Credential it receives. Your route handler stays the same regardless of which method the client chose.
+The server verifies whichever Credential it receives. Intent shorthand such as `mppx.charge(options)` implicitly composes every registered method with that intent when they share compatible request units. Compose methods explicitly when one method needs different options—Lightning uses satoshis, while this guide prices Tempo and Stripe in US dollars.
 
 ## Server setup
 
@@ -69,21 +69,22 @@ Register all three methods in a single `Mppx.create` call. Each method has its o
 
 ```ts [server.ts]
 import Stripe from 'stripe'
-import { Mppx, tempo, stripe } from 'mppx/server'
+import { Mppx, stripe, tempo } from 'mppx/server'
 import { spark } from '@buildonspark/lightning-mpp-sdk/server'
 
 const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 const mppx = Mppx.create({
-  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
   methods: [
     tempo.charge({
-      testnet: true,
       currency: '0x20c0000000000000000000000000000000000000', // pathUSD on Tempo
       recipient: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+      testnet: true,
     }),
     stripe.charge({
       client: stripeClient,
+      currency: 'usd',
+      decimals: 2,
       networkId: 'internal',
       paymentMethodTypes: ['card'],
     }),
@@ -91,31 +92,35 @@ const mppx = Mppx.create({
       mnemonic: process.env.MNEMONIC!,
     }),
   ],
+  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
 })
 ```
 
 ### Create a payment-gated route
 
-The route handler is identical to a single-method setup. `mppx.charge` advertises all registered methods in the Challenge and verifies whichever Credential the client presents.
+Compose the methods explicitly so each offer receives an equivalent price in its native unit. Resolve the Lightning amount from a trusted BTC/USD price feed, then pass the dollar amount to Tempo and Stripe and the converted satoshi amount to Lightning.
 
 ```ts [server.ts]
 import crypto from 'crypto'
 import Stripe from 'stripe'
-import { Mppx, tempo, stripe } from 'mppx/server'
+import { Mppx, stripe, tempo } from 'mppx/server'
 import { spark } from '@buildonspark/lightning-mpp-sdk/server'
+
+declare function quoteUsdInSats(usdAmount: string): Promise<string>
 
 const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 const mppx = Mppx.create({
-  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
   methods: [
     tempo.charge({
-      testnet: true,
       currency: '0x20c0000000000000000000000000000000000000', // pathUSD on Tempo
       recipient: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+      testnet: true,
     }),
     stripe.charge({
       client: stripeClient,
+      currency: 'usd',
+      decimals: 2,
       networkId: 'internal',
       paymentMethodTypes: ['card'],
     }),
@@ -123,17 +128,22 @@ const mppx = Mppx.create({
       mnemonic: process.env.MNEMONIC!,
     }),
   ],
+  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
 })
 
 // [!code focus:start]
+const description = 'Premium API access'
+const usdAmount = '0.01'
+const lightningSats = await quoteUsdInSats(usdAmount)
+const charge = mppx.compose(
+  ['lightning/charge', { amount: lightningSats, description }],
+  ['stripe/charge', { amount: usdAmount, description }],
+  ['tempo/charge', { amount: usdAmount, description }],
+)
+
 Bun.serve({
   async fetch(request) {
-    const result = await mppx.charge({
-      amount: '0.01',
-      currency: 'usd',
-      decimals: 2,
-      description: 'Premium API access',
-    })(request)
+    const result = await charge(request)
 
     if (result.status === 402) return result.challenge
 
@@ -162,7 +172,7 @@ $ npx mppx http://localhost:3000
 
 ## Framework examples
 
-The `Mppx.create` configuration is the same across frameworks—only the route handler syntax changes.
+The `Mppx.create` configuration is the same across frameworks—only the route handler syntax changes. These examples resolve the Lightning quote at startup for brevity; refresh it before it becomes stale according to your pricing policy.
 
 ### Hono
 
@@ -170,22 +180,25 @@ The `Mppx.create` configuration is the same across frameworks—only the route h
 import crypto from 'crypto'
 import { Hono } from 'hono'
 import Stripe from 'stripe'
-import { Mppx, tempo, stripe } from 'mppx/hono'
+import { Mppx, stripe, tempo } from 'mppx/hono'
 import { spark } from '@buildonspark/lightning-mpp-sdk/server'
+
+declare function quoteUsdInSats(usdAmount: string): Promise<string>
 
 const app = new Hono()
 const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 const mppx = Mppx.create({
-  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
   methods: [
     tempo.charge({
-      testnet: true,
       currency: '0x20c0000000000000000000000000000000000000', // pathUSD on Tempo
       recipient: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+      testnet: true,
     }),
     stripe.charge({
       client: stripeClient,
+      currency: 'usd',
+      decimals: 2,
       networkId: 'internal',
       paymentMethodTypes: ['card'],
     }),
@@ -193,11 +206,21 @@ const mppx = Mppx.create({
       mnemonic: process.env.MNEMONIC!,
     }),
   ],
+  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
 })
+
+const description = 'Premium API access'
+const usdAmount = '0.01'
+const lightningSats = await quoteUsdInSats(usdAmount)
+const charge = mppx.compose(
+  ['lightning/charge', { amount: lightningSats, description }],
+  ['stripe/charge', { amount: usdAmount, description }],
+  ['tempo/charge', { amount: usdAmount, description }],
+)
 
 app.get(
   '/api/resource',
-  mppx.charge({ amount: '0.01', currency: 'usd', decimals: 2, description: 'Premium API access' }),
+  charge,
   async (c) => c.json({ message: 'Paid content' }),
 )
 ```
@@ -208,22 +231,25 @@ app.get(
 import crypto from 'crypto'
 import express from 'express'
 import Stripe from 'stripe'
-import { Mppx, tempo, stripe } from 'mppx/express'
+import { Mppx, stripe, tempo } from 'mppx/express'
 import { spark } from '@buildonspark/lightning-mpp-sdk/server'
+
+declare function quoteUsdInSats(usdAmount: string): Promise<string>
 
 const app = express()
 const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 const mppx = Mppx.create({
-  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
   methods: [
     tempo.charge({
-      testnet: true,
       currency: '0x20c0000000000000000000000000000000000000', // pathUSD on Tempo
       recipient: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+      testnet: true,
     }),
     stripe.charge({
       client: stripeClient,
+      currency: 'usd',
+      decimals: 2,
       networkId: 'internal',
       paymentMethodTypes: ['card'],
     }),
@@ -231,11 +257,21 @@ const mppx = Mppx.create({
       mnemonic: process.env.MNEMONIC!,
     }),
   ],
+  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
 })
+
+const description = 'Premium API access'
+const usdAmount = '0.01'
+const lightningSats = await quoteUsdInSats(usdAmount)
+const charge = mppx.compose(
+  ['lightning/charge', { amount: lightningSats, description }],
+  ['stripe/charge', { amount: usdAmount, description }],
+  ['tempo/charge', { amount: usdAmount, description }],
+)
 
 app.get(
   '/api/resource',
-  mppx.charge({ amount: '0.01', currency: 'usd', decimals: 2, description: 'Premium API access' }),
+  charge,
   async (req, res) => res.json({ message: 'Paid content' }),
 )
 ```
@@ -245,21 +281,24 @@ app.get(
 ```ts [app/api/resource/route.ts]
 import crypto from 'crypto'
 import Stripe from 'stripe'
-import { Mppx, tempo, stripe } from 'mppx/nextjs'
+import { Mppx, stripe, tempo } from 'mppx/nextjs'
 import { spark } from '@buildonspark/lightning-mpp-sdk/server'
+
+declare function quoteUsdInSats(usdAmount: string): Promise<string>
 
 const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 const mppx = Mppx.create({
-  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
   methods: [
     tempo.charge({
-      testnet: true,
       currency: '0x20c0000000000000000000000000000000000000', // pathUSD on Tempo
       recipient: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+      testnet: true,
     }),
     stripe.charge({
       client: stripeClient,
+      currency: 'usd',
+      decimals: 2,
       networkId: 'internal',
       paymentMethodTypes: ['card'],
     }),
@@ -267,11 +306,21 @@ const mppx = Mppx.create({
       mnemonic: process.env.MNEMONIC!,
     }),
   ],
+  secretKey: process.env.MPP_SECRET_KEY || crypto.randomBytes(32).toString('base64'),
 })
 
-export const GET =
-  mppx.charge({ amount: '0.01', currency: 'usd', decimals: 2, description: 'Premium API access' })
-  (async () => Response.json({ message: 'Paid content' }))
+const description = 'Premium API access'
+const usdAmount = '0.01'
+const lightningSats = await quoteUsdInSats(usdAmount)
+const charge = mppx.compose(
+  ['lightning/charge', { amount: lightningSats, description }],
+  ['stripe/charge', { amount: usdAmount, description }],
+  ['tempo/charge', { amount: usdAmount, description }],
+)
+
+export const GET = charge(
+  async () => Response.json({ message: 'Paid content' }),
+)
 ```
 
 ## Method-specific configuration
