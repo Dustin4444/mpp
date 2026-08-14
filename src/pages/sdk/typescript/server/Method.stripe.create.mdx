@@ -5,11 +5,11 @@ imageDescription: "Offer Stripe and stablecoin payments together"
 
 # `stripe.create` [Configure Stripe machine payments]
 
-Creates Stripe SPT and stablecoin server methods with automatic deposit-address resolution and payment recording.
+Creates Stripe SPT and stablecoin server methods with deposit-address resolution and payment recording.
 
 ## Usage
 
-Use `defaultMethods()` to offer Tempo stablecoins and Stripe Shared Payment Tokens. `mppx` resolves the Tempo deposit address from Stripe and records successful Tempo payments as Stripe `PaymentIntent` objects.
+Pass a deposit-address resolver, then use `defaultMethods()` to offer Tempo stablecoins and Stripe Shared Payment Tokens. `mppx` records successful Tempo payments as Stripe `PaymentIntent` objects.
 
 ```ts twoslash [server.ts]
 import Stripe from 'stripe'
@@ -19,7 +19,9 @@ const client = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 const payments = stripe.create({
   client,
+  depositAddresses: (network) => stripe.findOrCreateDepositAddress(client, network),
   livemode: false,
+  metadata: { plan: 'pro' },
   networkId: process.env.STRIPE_NETWORK_ID!,
 })
 
@@ -43,6 +45,32 @@ Test mode uses pathUSD on Tempo testnet. Live mode uses USDC.e on Tempo mainnet.
 
 ## Advanced options
 
+### SPT only
+
+Omit `depositAddresses` when you only accept cards and Link through SPTs. `defaultMethods()` then returns the SPT method synchronously and doesn't call Stripe's deposit-address API.
+
+### With selected default methods
+
+Exclude `spt` or `tempo` when you don't want both default charge methods.
+
+```ts twoslash [server.ts]
+import Stripe from 'stripe'
+import { Mppx, stripe } from 'mppx/server'
+
+const client = new Stripe(process.env.STRIPE_SECRET_KEY!)
+const payments = stripe.create({
+  client,
+  depositAddresses: (network) => stripe.findOrCreateDepositAddress(client, network),
+  livemode: false,
+  networkId: process.env.STRIPE_NETWORK_ID!,
+})
+
+const mppx = Mppx.create({
+  methods: await payments.defaultMethods({ exclude: ['spt'] }),
+  secretKey: process.env.MPP_SECRET_KEY!,
+})
+```
+
 ### With static deposit addresses
 
 Provide deposit addresses to create the default methods synchronously and avoid Stripe API lookup during startup.
@@ -56,7 +84,7 @@ const client = new Stripe(process.env.STRIPE_SECRET_KEY!)
 const payments = stripe.create({
   client,
   depositAddresses: {
-    tempo: '0x20C0000000000000000000000000000000000001',
+    tempo: '0x20C0000000000000000000000000000000000001', // Stripe Tempo deposit address
   },
   livemode: true,
   networkId: process.env.STRIPE_NETWORK_ID!,
@@ -64,27 +92,6 @@ const payments = stripe.create({
 
 const mppx = Mppx.create({
   methods: payments.defaultMethods(),
-  secretKey: process.env.MPP_SECRET_KEY!,
-})
-```
-
-### With selected default methods
-
-Exclude `spt` or `tempo` when you don't want both default charge methods.
-
-```ts twoslash [server.ts]
-import Stripe from 'stripe'
-import { Mppx, stripe } from 'mppx/server'
-
-const client = new Stripe(process.env.STRIPE_SECRET_KEY!)
-const payments = stripe.create({
-  client,
-  livemode: false,
-  networkId: process.env.STRIPE_NETWORK_ID!,
-})
-
-const mppx = Mppx.create({
-  methods: await payments.defaultMethods({ exclude: ['spt'] }),
   secretKey: process.env.MPP_SECRET_KEY!,
 })
 ```
@@ -112,19 +119,23 @@ type StripeMachinePayments = {
 }
 ```
 
-`defaultMethods()` returns Tempo charge followed by SPT charge. Chain `.additional({ ... })` before awaiting to add Base charge, Tempo session, or a Solana method factory.
+With a Tempo deposit address, `defaultMethods()` returns Tempo charge followed by SPT charge. Without `depositAddresses`, it returns only SPT. A function resolver makes the result awaitable; static addresses or no resolver return synchronously. Chain `.additional({ ... })` before awaiting to add Base charge, Tempo session, or a Solana method factory.
+
+Stripe-managed stablecoin charge methods created directly or through `.additional()` require at least `0.01` USD. Below that amount, `mppx` excludes the method before returning a Challenge. Tempo sessions don't use this minimum.
 
 ## Returned methods
 
 ### base.charge
 
-Creates a Base x402 charge method for a Stripe Base deposit address. Pass the branded address from `findOrCreateDepositAddress('base')` and an x402 facilitator configuration.
+Creates a Base x402 charge method for a Stripe Base deposit address. Pass the branded address from `findOrCreateDepositAddress('base')` and an x402 facilitator configuration. Pass `metadata` to add or override Stripe `PaymentIntent` metadata for this method.
 
 ### defaultMethods
 
-Returns Tempo charge and SPT charge methods. Pass `{ exclude: ['spt'] }` or `{ exclude: ['tempo'] }` to omit a default.
+Returns an SPT charge method plus each stablecoin method with a configured deposit address. Pass `{ exclude: ['spt'] }` or `{ exclude: ['tempo'] }` to omit a default.
 
 Call `.additional(config)` before awaiting asynchronous address resolution. The config accepts `base`, `solana`, and `tempo.session` entries. Stablecoin charge methods record successful payments in Stripe without replacing their existing `onPaymentSuccess` hooks.
+
+Function resolvers run in parallel. If one network fails, `mppx` logs a warning, excludes that network's methods, and keeps the methods whose addresses resolved.
 
 ### findOrCreateDepositAddress
 
@@ -136,7 +147,7 @@ Creates an SPT charge method. `paymentMethodTypes` defaults to `['card', 'link']
 
 ### tempo.charge
 
-Creates a Tempo charge method for a Stripe deposit address. Currency and network derive from `livemode`.
+Creates a Tempo charge method for a Stripe deposit address. Currency and network derive from `livemode`. Pass `metadata` to add or override Stripe `PaymentIntent` metadata for this method.
 
 ### tempo.session
 
@@ -160,13 +171,19 @@ Stripe Connect account and settlement configuration. `stripeAccount` scopes depo
 
 - **Type:** `Partial<Record<'base' | 'solana' | 'tempo', string>> | ((network) => Promise<string>)`
 
-Static deposit addresses or an asynchronous resolver. By default, `mppx` finds or creates each required address through Stripe and caches it per client, network, and connected account.
+Static deposit addresses or an asynchronous resolver. Use `stripe.findOrCreateDepositAddress(client, network)` in the resolver to fetch and cache Stripe addresses. When omitted, `defaultMethods()` returns only the SPT method.
 
 ### livemode
 
 - **Type:** `boolean`
 
 Selects live or test networks and currencies for built-in stablecoin methods.
+
+### metadata (optional)
+
+- **Type:** `Record<string, string>`
+
+Key-value pairs attached to Stripe `PaymentIntent` objects created or recorded by SPT and stablecoin charge methods. Per-method `metadata` on `base.charge()` or `tempo.charge()` overrides matching keys.
 
 ### networkId
 
