@@ -333,16 +333,29 @@ type Mppx = {
       request?: RequestInit
     },
   ) => Promise<PreparedPayment>
-  /** Prepares a Challenge with the exact HTTP request that produced it. */
-  prepareRequest: (
-    input: RequestInfo | URL,
-    init?: RequestInit,
-    options?: {
-      acceptPayment?: string | AcceptPayment.Entry[]
-      maxRedirects?: number
-      orderChallenges?: OrderChallenges
-    },
-  ) => Promise<PreparedRequest>
+  /** Returns an HTTP response with its exact request and optional payment. */
+  prepareRequest: {
+    <const RequirePayment extends boolean>(
+      input: RequestInfo | URL,
+      init: RequestInit | undefined,
+      options: {
+        acceptPayment?: string | AcceptPayment.Entry[]
+        maxRedirects?: number
+        orderChallenges?: OrderChallenges
+        requirePayment: RequirePayment
+      },
+    ): Promise<PreparedRequest<RequirePayment>>
+    (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+      options?: {
+        acceptPayment?: string | AcceptPayment.Entry[]
+        maxRedirects?: number
+        orderChallenges?: OrderChallenges
+        requirePayment?: false
+      },
+    ): Promise<PreparedRequest>
+  }
   /** The original, unwrapped fetch — bypasses payment interception. */
   rawFetch: typeof globalThis.fetch
   /** The transport used. */
@@ -356,7 +369,7 @@ Selects and snapshots a supported Challenge without signing it. The returned obj
 
 ### `prepareRequest`
 
-Follows safe pre-payment redirects and prepares the exact HTTP request that returned the Challenge. Use it in Node.js when approval must happen before signing; the paid request doesn't follow redirects. See [`Mppx.prepareRequest`](/sdk/typescript/client/Mppx.prepareRequest).
+Follows safe pre-payment redirects and returns the exact request, its response, and an optional prepared payment. Use it in Node.js when approval must happen before signing; the paid request doesn't follow redirects. See [`Mppx.prepareRequest`](/sdk/typescript/client/Mppx.prepareRequest).
 
 ### `rawFetch`
 
