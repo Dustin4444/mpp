@@ -1,7 +1,8 @@
 name: PR Auto-Label
 
 on:
-  pull_request_target:
+  # This job checks out the trusted base branch and reads pull request metadata only.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
     types: [opened, synchronize]
 
 permissions: {}
@@ -11,8 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
       pull-requests: write
     steps:
+      - name: Secure runner
+        uses: tempoxyz/gh-actions/actions/secure-runner@077919669f220320ec1cd44cc18ceff33440c8f0 # main
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
