@@ -133,7 +133,6 @@ type Page =
   | { path: '/sdk/typescript/client/Method.tempo.subscription'; render: 'static' }
   | { path: '/sdk/typescript/client/Mppx.create'; render: 'static' }
   | { path: '/sdk/typescript/client/Mppx.preparePayment'; render: 'static' }
-  | { path: '/sdk/typescript/client/Mppx.prepareRequest'; render: 'static' }
   | { path: '/sdk/typescript/client/Mppx.restore'; render: 'static' }
   | { path: '/sdk/typescript/client/Transport.from'; render: 'static' }
   | { path: '/sdk/typescript/client/Transport.http'; render: 'static' }
